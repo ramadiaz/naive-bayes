@@ -1,79 +1,71 @@
 import numpy as np
-from collections import defaultdict
+import pandas as pd
 
 class NaiveBayes:
     def __init__(self):
-        self.class_priors = {}
-        self.feature_probs = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-        
+        self.class_probs = {}
+        self.feature_probs = {}
+
     def fit(self, X, y):
-        classes, counts = np.unique(y, return_counts=True)
-        total_samples = len(y)
+        n_samples = len(y)
+        self.classes = np.unique(y)
+   
+        for c in self.classes:
+            self.class_probs[c] = np.sum(y == c) / n_samples
         
-        for cls, count in zip(classes, counts):
-            self.class_priors[cls] = count / total_samples
-        
-        for feature_idx in range(X.shape[1]):
-            for cls in classes:
-                X_cls = X[y == cls]
-                
-                unique_values, value_counts = np.unique(X_cls[:, feature_idx], return_counts=True)
-                total_cls_samples = len(X_cls)
-                
-                for value, count in zip(unique_values, value_counts):
-                    self.feature_probs[feature_idx][cls][value] = count / total_cls_samples
-    
+        n_features = X.shape[1]
+        self.feature_probs = {}
+
+        for c in self.classes:
+            X_c = X[y == c]
+            self.feature_probs[c] = {}
+
+            for i in range(n_features):
+                values, counts = np.unique(X_c[:, i], return_counts=True)
+                total = len(X_c)
+                probs = {}
+
+                for v, count in zip(values, counts):
+                    probs[v] = count / total
+
+                self.feature_probs[c][i] = probs
+
     def predict(self, X):
         predictions = []
-        
-        for sample in X:
+
+        for x in X:
             class_scores = {}
-            
-            for cls in self.class_priors:
-                score = np.log(self.class_priors[cls])
-                
-                for feature_idx, value in enumerate(sample):
-                    if value in self.feature_probs[feature_idx][cls]:
-                        score += np.log(self.feature_probs[feature_idx][cls][value])
+
+            for c in self.classes:
+                score = self.class_probs[c]
+
+                for i, value in enumerate(x):
+                    if value in self.feature_probs[c][i]:
+                        score *= self.feature_probs[c][i][value]
                     else:
-                        score += np.log(1e-10)
-                
-                class_scores[cls] = score
+                        score *= 1e-5  
+
+                class_scores[c] = score
             
-            predictions.append(max(class_scores.items(), key=lambda x: x[1])[0])
-        
+            best_class = max(class_scores, key=class_scores.get)
+            predictions.append(best_class)
+
         return predictions
 
+df = pd.read_csv('data/train.csv')
+ts = pd.read_csv('data/test.csv')
 
-X_train = np.array([
-    [25, 5000000, 1],  
-    [30, 8000000, 1],
-    [35, 12000000, 1],
-    [20, 3000000, 0],
-    [45, 15000000, 1],
-    [22, 4000000, 0],
-    [28, 6000000, 1],
-    [40, 10000000, 1],
-    [19, 2000000, 0],
-    [32, 9000000, 1]
-])
+X_train = df[["Size","Weight","Sweetness","Softness","HarvestTime","Ripeness","Acidity"]].to_numpy()
 
-y_train = np.array([0, 1, 1, 0, 1, 0, 1, 1, 0, 1])  
+y_train = df[["Quality"]].to_numpy().ravel()
 
-X_test = np.array([
-    [27, 5500000, 1],
-    [33, 9500000, 1],
-    [21, 3500000, 0],
-    [38, 11000000, 1]
-])
+X_test = ts[["Size","Weight","Sweetness","Softness","HarvestTime","Ripeness","Acidity"]].to_numpy()
 
-nb = NaiveBayes()
-nb.fit(X_train, y_train)
-
-predictions = nb.predict(X_test)
+model = NaiveBayes()
+model.fit(X_train, y_train)
+preds = model.predict(X_test)
 
 print("Hasil Prediksi:")
-for i, (sample, pred) in enumerate(zip(X_test, predictions)):
-    print(f"Data Uji {i+1}:")
-    print(f"Usia: {sample[0]}, Pendapatan: Rp {sample[1]}, Status Pekerjaan: {'Bekerja' if sample[2] == 1 else 'Tidak Bekerja'}")
-    print(f"Prediksi: {'Membeli' if pred == 1 else 'Tidak Membeli'}\n") 
+for i in range(len(X_test)):
+    print(f"Data {i+1}: {preds[i]}")
+    
